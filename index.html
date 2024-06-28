@@ -1,0 +1,418 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8">
+        <meta http-equiv="X-UA-Compatible" content="IE=edge">
+        <meta name="viewport" content="initial-scale=1,user-scalable=no,maximum-scale=1,width=device-width">
+        <meta name="mobile-web-app-capable" content="yes">
+        <meta name="apple-mobile-web-app-capable" content="yes">
+        <link rel="stylesheet" href="css/leaflet.css">
+        <link rel="stylesheet" href="css/L.Control.Layers.Tree.css">
+        <link rel="stylesheet" href="css/qgis2web.css">
+        <link rel="stylesheet" href="css/fontawesome-all.min.css">
+        <style>
+        html, body, #map {
+             width: 90%;
+            height: 95%;
+            padding: 0;
+            margin: 25px -20px 10px 100px;
+        }
+        #province-details {
+            position: absolute;
+            top: 10px;
+            right: 5px;
+            background-color: white;
+            padding: 10px;
+            border: 1px solid #ccc;
+            max-width: 300px;
+            margin: 40px 1020px 0px -10px;
+
+        }
+        </style>
+        <title>Terrains domaniaux prospectés</title>
+    <script type="text/javascript" src="https://www.gstatic.com/charts/loader.js"></script>
+    <script type="text/javascript">
+      google.charts.load('current', {'packages':['corechart']});
+      google.charts.setOnLoadCallback(drawChart);
+      function drawChart() {
+
+        var data = google.visualization.arrayToDataTable([
+          ['Task', 'Hours per Day'],
+          ['CS',     806703],
+          ['TTH',      80670],
+          ['FM',  1067038],
+          ['MS', 7067038],
+          ['RO',    1567038],
+        ['DT',    10067038],
+        ['RSK',    867038],
+         ['AL JNB',    8067038 ],
+          ['BMK',   1267038],
+           ['SM',    1367038],
+        ]);
+
+        var options = {
+          title: 'Superficie prospectée par région'
+        };
+
+        var chart = new google.visualization.PieChart(document.getElementById('piechart'));
+
+        chart.draw(data, options);
+      }
+    </script>
+    <script type="text/javascript" src="https://www.gstatic.com/charts/loader.js"></script>
+    <script type="text/javascript">
+      google.charts.load('current', {'packages':['corechart']});
+      google.charts.setOnLoadCallback(drawChart);
+
+    function drawChart() {
+  var data = google.visualization.arrayToDataTable([
+    ['Filiale', 'Besoin foncier (m²)', 'Terrains prospectés (m²)'],
+    ['CS', 14730000 , 992203],
+    ['TTH', 6110000, 362252],
+    ['FM', 10010000, 2056617],
+    ['MS', 9770000, 5250446],
+    ['RO', 7580000, 4179151],
+    ['DT', 3250000, 372728],
+    ['RSK', 11980000, 4987387],
+    ['AL JNB', 11640000, 8067038],
+    ['BMK', 5800000, 86534],
+    ['SM', 18700000, 767038],
+  ]);
+
+  var options = {
+    title: 'Prospection Domaniale',
+    isStacked: true, // Utiliser les séries empilées
+    legend: { position: 'bottom' }, // Positionner la légende en bas
+    bars: 'horizontal' // Utiliser des barres horizontales
+  };
+
+  var chart = new google.visualization.BarChart(document.getElementById('chart_div'));
+  chart.draw(data, options);
+}
+    </script>
+    </head>
+    <body>
+        <div id="map">
+        </div><div id="province-details">
+    <h2 style="color: darkblue; margin: 0px 0px 0px 0px;" id="province-name">Détails de la province</h2>
+    <div id="province-info"></div></div>
+        <script src="js/qgis2web_expressions.js"></script>
+        <script src="js/leaflet.js"></script>
+        <script src="js/L.Control.Layers.Tree.min.js"></script>
+        <script src="js/leaflet.rotatedMarker.js"></script>
+        <script src="js/leaflet.pattern.js"></script>
+        <script src="js/leaflet-hash.js"></script>
+        <script src="js/Autolinker.min.js"></script>
+        <script src="js/rbush.min.js"></script>
+        <script src="js/labelgun.min.js"></script>
+        <script src="js/labels.js"></script>
+        <script src="data/Provinceayantbesoindefoncier_1.js"></script>
+        <script src="data/Besoinenfoncierparprovince_2.js"></script>
+        <script src="data/Terrainsdomaniauxprospects_3.js"></script>
+        <script>
+        var map = L.map('map', {
+            zoomControl:true, maxZoom:28, minZoom:1
+        })
+        var hash = new L.Hash(map);
+        //map.attributionControl.setPrefix('<a href="https://github.com/tomchadwin/qgis2web" target="_blank">qgis2web</a> &middot; <a href="https://leafletjs.com" title="A JS library for interactive maps">Leaflet</a> &middot; <a href="https://qgis.org">QGIS</a>');
+        var autolinker = new Autolinker({truncate: {length: 30, location: 'smart'}});
+        function removeEmptyRowsFromPopupContent(content, feature) {
+         var tempDiv = document.createElement('div');
+         tempDiv.innerHTML = content;
+         var rows = tempDiv.querySelectorAll('tr');
+         for (var i = 0; i < rows.length; i++) {
+             var td = rows[i].querySelector('td.visible-with-data');
+             var key = td ? td.id : '';
+             if (td && td.classList.contains('visible-with-data') && feature.properties[key] == null) {
+                 rows[i].parentNode.removeChild(rows[i]);
+             }
+         }
+         return tempDiv.innerHTML;
+        }
+        document.querySelector(".leaflet-popup-pane").addEventListener("load", function(event) {
+          var tagName = event.target.tagName,
+            popup = map._popup;
+          // Also check if flag is already set.
+          if (tagName === "IMG" && popup && !popup._updated) {
+            popup._updated = true; // Set flag to prevent looping.
+            popup.update();
+          }
+        }, true);
+        var bounds_group = new L.featureGroup([]);
+        function setBounds() {
+            if (bounds_group.getLayers().length) {
+                map.fitBounds(bounds_group.getBounds());
+            }
+        }
+        map.createPane('pane_imagesatellite_0');
+        map.getPane('pane_imagesatellite_0').style.zIndex = 400;
+        var layer_imagesatellite_0 = L.tileLayer('https://www.google.cn/maps/vt?lyrs=s@189&gl=cn&x={x}&y={y}&z={z}', {
+            pane: 'pane_imagesatellite_0',
+            opacity: 1.0,
+            attribution: '',
+            minZoom: 1,
+            maxZoom: 28,
+            minNativeZoom: 0,
+            maxNativeZoom: 18
+        });
+        layer_imagesatellite_0;
+        map.addLayer(layer_imagesatellite_0);
+        function pop_Provinceayantbesoindefoncier_1(feature, layer) {
+            var popupContent = '<table>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['Name'] !== null ? autolinker.link(feature.properties['Name'].toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">Besoin_Fon</th>\
+                        <td>' + (feature.properties['Besoin_Fon'] !== null ? autolinker.link(feature.properties['Besoin_Fon'].toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">prospectio</th>\
+                        <td>' + (feature.properties['prospectio'] !== null ? autolinker.link(feature.properties['prospectio'].toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">FILIALE</th>\
+                        <td>' + (feature.properties['FILIALE'] !== null ? autolinker.link(feature.properties['FILIALE'].toLocaleString()) : '') + '</td>\
+                    </tr>\
+                </table>';
+            layer.bindPopup(popupContent, {maxHeight: 400});
+            var popup = layer.getPopup();
+            var content = popup.getContent();
+            var updatedContent = removeEmptyRowsFromPopupContent(content, feature);
+            popup.setContent(updatedContent);
+        }
+
+        function style_Provinceayantbesoindefoncier_1_0() {
+            return {
+                pane: 'pane_Provinceayantbesoindefoncier_1',
+                opacity: 1,
+                color: 'rgba(35,35,35,1.0)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1.0, 
+                fill: true,
+                fillOpacity: 0.4,
+                fillColor: 'rgba(243,35,35,1.0)',
+                interactive: true,
+            }
+        }
+        map.createPane('pane_Provinceayantbesoindefoncier_1');
+        map.getPane('pane_Provinceayantbesoindefoncier_1').style.zIndex = 401;
+        map.getPane('pane_Provinceayantbesoindefoncier_1').style['mix-blend-mode'] = 'normal';
+        var layer_Provinceayantbesoindefoncier_1 = new L.geoJson(json_Provinceayantbesoindefoncier_1, {
+            attribution: '',
+            interactive: true,
+            dataVar: 'json_Provinceayantbesoindefoncier_1',
+            layerName: 'layer_Provinceayantbesoindefoncier_1',
+            pane: 'pane_Provinceayantbesoindefoncier_1',
+            onEachFeature: pop_Provinceayantbesoindefoncier_1,
+            style: style_Provinceayantbesoindefoncier_1_0,
+        });
+        bounds_group.addLayer(layer_Provinceayantbesoindefoncier_1);
+        map.addLayer(layer_Provinceayantbesoindefoncier_1);
+        function pop_Besoinenfoncierparprovince_2(feature, layer) {
+            var popupContent = '<table>\
+                    <tr >\
+                        <td colspan="2">' + (feature.properties['Name'] !== null ? autolinker.link(feature.properties['Name'].toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                <th scope="row">Besoin en Foncier</th>\
+                <td>' + (feature.properties['Besoin_Fon'] !== null ? autolinker.link(feature.properties['Besoin_Fon'].toLocaleString()) : '') + '</td>\
+            </tr>\
+            <tr>\
+                <th scope="row">Superficie prospectée</th>\
+                <td>' + (feature.properties['prospectio'] !== null ? autolinker.link(feature.properties['prospectio'].toLocaleString()) : '') + '</td>\
+            </tr>\
+            <tr>\
+                <th scope="row">Filiales</th>\
+                <td>' + (feature.properties['Filiales'] !== null ? autolinker.link(feature.properties['Filiales'].toLocaleString()) : '') + '</td>\
+            </tr>\
+            <tr>\
+                <td colspan="2"><a href="#" onclick="zoomToProvince(\'' + feature.properties['Name'].toLocaleString() + '\')">Zoomer sur les Parcelles Prospectées</a></td>\
+            </tr>\
+        </table>';
+        layer.bindPopup(popupContent, {maxHeight: 400});
+        var popup = layer.getPopup();
+        var content = popup.getContent();
+        var updatedContent = removeEmptyRowsFromPopupContent(content, feature);
+        popup.setContent(updatedContent);
+    }
+
+    function zoomToProvince(provinceName) {
+        var bounds = L.latLngBounds(); // Initialise un objet bounds vide
+        var foundParcels = false; // Variable pour indiquer si des parcelles ont été trouvées
+
+        // Parcours des couches de la couche Terrains domaniaux prospectés pour accumuler les limites des parcelles correspondantes à provinceName
+        layer_Terrainsdomaniauxprospects_3.eachLayer(function (layer) {
+            if (layer.feature.properties['j_Préfect'] === provinceName) {
+                bounds.extend(layer.getBounds().getNorthEast());
+                bounds.extend(layer.getBounds().getSouthWest());
+                foundParcels = true; // Indique qu'au moins une parcelle a été trouvée
+            }
+        });
+
+        // Vérifie s'il y a des parcelles trouvées pour cette province
+        if (foundParcels) {
+            // Ajuste les limites de la carte pour inclure toutes les parcelles correspondantes
+            map.fitBounds(bounds);
+        } else {
+            // Aucune parcelle n'a été prospectée pour cette province
+            alert("Aucune parcelle n'a été prospectée pour cette province.");
+            // Vous pouvez également ajuster le comportement selon vos besoins, comme centrer la carte sur la province, par exemple :
+            // map.setView([latitudeProvince, longitudeProvince], zoomLevel);
+        }
+    }
+
+        function style_Besoinenfoncierparprovince_2_0() {
+            return {
+                pane: 'pane_Besoinenfoncierparprovince_2',
+                opacity: 1,
+                color: 'rgba(35,35,35,1.0)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1.0, 
+                fill: true,
+                fillOpacity: 0.4,
+                fillColor: 'rgba(166,206,227,1.0)',
+                interactive: true,
+            }
+        }
+        map.createPane('pane_Besoinenfoncierparprovince_2');
+        map.getPane('pane_Besoinenfoncierparprovince_2').style.zIndex = 402;
+        map.getPane('pane_Besoinenfoncierparprovince_2').style['mix-blend-mode'] = 'normal';
+        var layer_Besoinenfoncierparprovince_2 = new L.geoJson(json_Besoinenfoncierparprovince_2, {
+            attribution: '',
+            interactive: true,
+            dataVar: 'json_Besoinenfoncierparprovince_2',
+            layerName: 'layer_Besoinenfoncierparprovince_2',
+            pane: 'pane_Besoinenfoncierparprovince_2',
+            onEachFeature: pop_Besoinenfoncierparprovince_2,
+            style: style_Besoinenfoncierparprovince_2_0,
+        });
+        bounds_group.addLayer(layer_Besoinenfoncierparprovince_2);
+        map.addLayer(layer_Besoinenfoncierparprovince_2);
+        function pop_Terrainsdomaniauxprospects_3(feature, layer) {
+            var popupContent = '<table>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['j_Préfect'] !== null ? autolinker.link(feature.properties['j_Préfect'].toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">Nom de la commune </th>\
+                        <td>' + (feature.properties['j_Commune'] !== null ? autolinker.link(feature.properties['j_Commune'].toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">Référence foncière</th>\
+                        <td>' + (feature.properties['j_Titre Fo'] !== null ? autolinker.link(feature.properties['j_Titre Fo'].toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">Superficie prospectée</th>\
+                        <td>' + (feature.properties['Superficie'] !== null ? autolinker.link(feature.properties['Superficie'].toLocaleString()) : '') + '</td>\
+                    </tr>\
+                </table>';
+            layer.bindPopup(popupContent, {maxHeight: 400});
+            var popup = layer.getPopup();
+            var content = popup.getContent();
+            var updatedContent = removeEmptyRowsFromPopupContent(content, feature);
+            popup.setContent(updatedContent);
+        }
+
+        function style_Terrainsdomaniauxprospects_3_0() {
+            return {
+                pane: 'pane_Terrainsdomaniauxprospects_3',
+                opacity: 1,
+                color: 'rgba(35,35,35,1.0)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1.0, 
+                fill: true,
+                fillOpacity: 0.4,
+                fillColor: 'rgba(183,72,75,1.0)',
+                interactive: true,
+            }
+        }
+        map.createPane('pane_Terrainsdomaniauxprospects_3');
+        map.getPane('pane_Terrainsdomaniauxprospects_3').style.zIndex = 403;
+        map.getPane('pane_Terrainsdomaniauxprospects_3').style['mix-blend-mode'] = 'normal';
+        var layer_Terrainsdomaniauxprospects_3 = new L.geoJson(json_Terrainsdomaniauxprospects_3, {
+            attribution: '',
+            interactive: true,
+            dataVar: 'json_Terrainsdomaniauxprospects_3',
+            layerName: 'layer_Terrainsdomaniauxprospects_3',
+            pane: 'pane_Terrainsdomaniauxprospects_3',
+            onEachFeature: pop_Terrainsdomaniauxprospects_3,
+            style: style_Terrainsdomaniauxprospects_3_0,
+        });
+        bounds_group.addLayer(layer_Terrainsdomaniauxprospects_3);
+        map.addLayer(layer_Terrainsdomaniauxprospects_3);
+            var abstract = new L.Control({'position':'bottomright'});
+            abstract.onAdd = function (map) {
+                this._div = L.DomUtil.create('div',
+                'leaflet-control abstract');
+                this._div.id = 'abstract'
+
+                    abstract.show();
+                    return this._div;
+                };
+                abstract.show = function () {
+                    this._div.classList.remove("abstract");
+                    this._div.classList.add("abstractUncollapsed");
+                    this._div.innerHTML = 'Cette carte interactive web présente les terrains domaniaux prospectés par le GAO Al Omrane. Les provinces marquées en rouge indiquent celles ayant des besoins en foncier.';
+            };
+            abstract.addTo(map);
+        var baseMaps = {};
+        var overlaysTree = [
+            {label: '<img src="legend/Terrainsdomaniauxprospects_3.png" /> Terrains domaniaux prospectés ', layer: layer_Terrainsdomaniauxprospects_3},
+            {label: '<img src="legend/Besoinenfoncierparprovince_2.png" /> Besoin en foncier par province ', layer: layer_Besoinenfoncierparprovince_2},
+            {label: '<img src="legend/Provinceayantbesoindefoncier_1.png" /> Province ayant besoin de foncier', layer: layer_Provinceayantbesoindefoncier_1},
+            {label: "image satellite", layer: layer_imagesatellite_0},]
+        var lay = L.control.layers.tree(null, overlaysTree,{
+            //namedToggle: true,
+            //selectorBack: false,
+            //closedSymbol: '&#8862; &#x1f5c0;',
+            //openedSymbol: '&#8863; &#x1f5c1;',
+            //collapseAll: 'Collapse all',
+            //expandAll: 'Expand all',
+            collapsed: true,
+        });
+        lay.addTo(map);
+           function showProvinceDetails(feature) {
+    var provinceName = feature.properties['Name'];
+    var provinceDetails = document.getElementById('province-details');
+    var provinceInfo = document.getElementById('province-info');
+    
+    var popupContent = `
+        <table style="width: 100%; border-collapse: separate; border-spacing: 0 18px;">
+            
+            <tr style="background-color: lightblue; border: 1px solid #ccc; padding: 10px; border-radius: 5px;">
+                <th scope="row" style="text-align: left; padding: 10px; width: 40%; border: none;">Besoin en Foncier</th>
+                <td style="text-align: left; padding: 10px; width: 60%; border: none;">${feature.properties['Besoin_Fon'] !== null ? autolinker.link(feature.properties['Besoin_Fon'].toLocaleString()) : ''}</td>
+            </tr>
+            <tr style="background-color: lightblue; border: 1px solid #ccc; padding: 10px; border-radius: 5px;">
+                <th scope="row" style="text-align: left; padding: 10px; width: 40%; border: none;">Superficie prospectée</th>
+                <td style="text-align: left; padding: 10px; width: 60%; border: none;">${feature.properties['prospectio'] !== null ? autolinker.link(feature.properties['prospectio'].toLocaleString()) : ''}</td>
+            </tr>
+            <tr style="background-color: lightblue; border: 1px solid #ccc; padding: 10px; border-radius: 5px;">
+                <th scope="row" style="text-align: left; padding: 10px; width: 40%; border: none;">Filiale</th>
+                <td style="text-align: left; padding: 10px; width: 60%; border: none;">${feature.properties['Filiales'] !== null ? autolinker.link(feature.properties['Filiales'].toLocaleString()) : ''}</td>
+            </tr>
+        </table>
+    `;
+    
+    provinceInfo.innerHTML = popupContent;
+    provinceDetails.style.display = 'block';
+    document.getElementById('province-name').textContent =  provinceName;
+}
+    layer_Besoinenfoncierparprovince_2.eachLayer(function (layer) {
+        layer.on('click', function (e) {
+            showProvinceDetails(layer.feature);
+        });
+    });
+
+        setBounds();
+        </script>
+       <div id="chart_div" style="width: 35%; height: 250px; margin: -240px 00px 0px -230px;"></div>
+    </body>
+</html>
